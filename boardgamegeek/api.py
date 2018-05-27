@@ -781,32 +781,46 @@ class BGGClient(BGGCommon):
             raise BGGError("List of Game Ids must be specified")
 
         log.debug("retrieving games {}".format(game_id_list,))
-
-        params = {"id": ','.join([str(game_id) for game_id in game_id_list]),
-                  "versions": 1 if versions else 0,
-                  "videos": 1 if videos else 0,
-                  "historical": 1 if historical else 0,
-                  "marketplace": 1 if marketplace else 0,
-                  "stats": 1}
-
-        xml_root = request_and_parse_xml(self.requests_session,
-                                         self._thing_api_url,
-                                         params=params,
-                                         timeout=self._timeout,
-                                         retries=self._retries,
-                                         retry_delay=self._retry_delay)
-
-        xml_root = xml_root.findall("item")
-        if xml_root is None:
-            msg = "invalid data for game ids: {}".format(game_id_list,)
-            raise BGGApiError(msg)
-
         game_list = []
-        for i, game_root in enumerate(xml_root):
-            game = create_game_from_xml(game_root,
-                                        game_id=game_id_list[i],
-                                        html_parser=html_parser)
-            game_list.append(game)
+
+        # REPEAT
+        still_going = True
+        offset = 0
+        while still_going:
+          sub_list = []
+          x = 0
+          while x < 400 and (offset+x) < len(game_id_list):
+            sub_list.append(game_id_list[offset + x])
+            x += 1
+          still_going = (offset + x + 1) < len(game_id_list)
+          offset += 400
+
+          params = {"id": ','.join([str(game_id) for game_id in sub_list]),
+                    "versions": 1 if versions else 0,
+                    "videos": 1 if videos else 0,
+                    "historical": 1 if historical else 0,
+                    "marketplace": 1 if marketplace else 0,
+                    "stats": 1}
+
+          xml_root = request_and_parse_xml(self.requests_session,
+                                           self._thing_api_url,
+                                           params=params,
+                                           timeout=self._timeout,
+                                           retries=self._retries,
+                                           retry_delay=self._retry_delay)
+
+          xml_root = xml_root.findall("item")
+          if xml_root is None:
+              msg = "invalid data for game ids: {}".format(sub_list,)
+              raise BGGApiError(msg)
+
+          for i, game_root in enumerate(xml_root):
+              game = create_game_from_xml(game_root,
+                                          game_id=sub_list[i],
+                                          html_parser=html_parser)
+              game_list.append(game)
+
+        #END REPEAT
 
         return game_list
 
